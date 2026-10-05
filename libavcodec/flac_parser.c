@@ -34,7 +34,9 @@
 
 #include "libavutil/attributes.h"
 #include "libavutil/crc.h"
+#include "libavutil/intreadwrite.h"
 #include "libavutil/mem.h"
+#include "flac.h"
 #include "flac_parse.h"
 #include "parser_internal.h"
 
@@ -98,7 +100,48 @@ typedef struct FLACParseContext {
     int wrap_buf_allocated_size;   /**< actual allocated size of the buffer   */
     FLACFrameInfo last_fi;         /**< last decoded frame header info        */
     int last_fi_valid;             /**< set if last_fi is valid               */
+    int max_framesize;             /**< largest possible frame size, from
+                                        STREAMINFO; 0 if unknown             */
+    int streaminfo_checked;        /**< set once extradata has been examined  */
+    int junk_reported;             /**< set once junk has been reported       */
 } FLACParseContext;
+
+/**
+ * Derive the largest frame size the stream can contain from the STREAMINFO
+ * block in extradata, if present.  Used to scale the junk-detection
+ * threshold: without it, valid streams with frames larger than
+ * 20 * FLAC_AVG_FRAME_SIZE (high sample rate / bit depth / channel count
+ * with large block sizes) are mistaken for garbage whenever the parser has
+ * to (re)synchronise, e.g. after a seek.
+ */
+static void read_streaminfo_max_framesize(FLACParseContext *fpc,
+                                          AVCodecContext *avctx)
+{
+    const uint8_t *si = avctx->extradata;
+    int size          = avctx->extradata_size;
+    int max_framesize;
+
+    fpc->streaminfo_checked = 1;
+    if (!si || size < FLAC_STREAMINFO_SIZE)
+        return;
+    /* extradata may carry the full "fLaC" + block header prefix */
+    if (AV_RL32(si) == MKTAG('f', 'L', 'a', 'C')) {
+        if (size < 8 + FLAC_STREAMINFO_SIZE)
+            return;
+        si += 8;
+    }
+
+    max_framesize = AV_RB24(si + 7);
+    if (!max_framesize) {
+        /* unknown (e.g. live encode): bound it from the stream parameters */
+        int max_blocksize = AV_RB16(si + 2);
+        int channels      = ((si[12] >> 1) & 7) + 1;
+        int bps           = (((si[12] & 1) << 4) | (si[13] >> 4)) + 1;
+        max_framesize = max_blocksize * channels * ((bps + 7) >> 3) +
+                        MAX_FRAME_HEADER_SIZE + 2;
+    }
+    fpc->max_framesize = max_framesize;
+}
 
 static int frame_header_is_valid(AVCodecContext *avctx, const uint8_t *buf,
                                  FLACFrameInfo *fi)
@@ -701,6 +744,8 @@ static int flac_parse(AVCodecParserContext *s, AVCodecContext *avctx,
     }
 
     fpc->avctx = avctx;
+    if (!fpc->streaminfo_checked)
+        read_streaminfo_max_framesize(fpc, avctx);
     if (fpc->best_header_valid && fpc->nb_headers_buffered >= FLAC_MIN_HEADERS)
         return get_best_header(fpc, poutbuf, poutbuf_size);
 
@@ -770,11 +815,20 @@ static int flac_parse(AVCodecParserContext *s, AVCodecContext *avctx,
         }
 
         if (!flac_fifo_space(&fpc->fifo_buf) &&
-            flac_fifo_size(&fpc->fifo_buf) / FLAC_AVG_FRAME_SIZE >
+            flac_fifo_size(&fpc->fifo_buf) /
+            FFMAX(FLAC_AVG_FRAME_SIZE, fpc->max_framesize) >
             fpc->nb_headers_buffered * 20) {
-            /* There is less than one valid flac header buffered for 20 headers
-             * buffered. Therefore the fifo is most likely filled with invalid
-             * data and the input is not a flac file. */
+            /* There is less than one valid flac header buffered for 20
+             * frames' worth of data (using the stream's maximum frame size
+             * when STREAMINFO is available). Therefore the fifo is most
+             * likely filled with invalid data and the input is not a flac
+             * file. */
+            if (!fpc->junk_reported) {
+                av_log(avctx, AV_LOG_WARNING, "no valid frame header in "
+                       "%zu bytes, discarding as junk\n",
+                       flac_fifo_size(&fpc->fifo_buf));
+                fpc->junk_reported = 1;
+            }
             goto handle_error;
         }
 
