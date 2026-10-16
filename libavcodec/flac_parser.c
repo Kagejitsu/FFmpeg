@@ -701,7 +701,12 @@ static int flac_parse(AVCodecParserContext *s, AVCodecContext *avctx,
     }
 
     fpc->avctx = avctx;
-    if (fpc->best_header_valid && fpc->nb_headers_buffered >= FLAC_MIN_HEADERS)
+    /* If the last call returned the junk preceding the best header, return
+     * the best header now. At the end of input this must not wait for
+     * FLAC_MIN_HEADERS, which may never arrive: the cleanup below would
+     * otherwise discard the header without ever returning it. */
+    if (fpc->best_header_valid &&
+        (fpc->nb_headers_buffered >= FLAC_MIN_HEADERS || fpc->end_padded))
         return get_best_header(fpc, poutbuf, poutbuf_size);
 
     /* If a best_header was found last call remove it with the buffer data. */
