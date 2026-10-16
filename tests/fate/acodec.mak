@@ -134,12 +134,24 @@ fate-acodec-dca2: CMP_SHIFT = -2048
 fate-acodec-dca2: CMP_TARGET = 534
 fate-acodec-dca2: SIZE_TOLERANCE = 1632
 
-FATE_ACODEC-$(call ENCDEC, FLAC, FLAC) += fate-acodec-flac fate-acodec-flac-exact-rice
+FATE_ACODEC-$(call ENCDEC, FLAC, FLAC) += fate-acodec-flac fate-acodec-flac-exact-rice \
+                                          fate-acodec-flac-blocksize-16384 \
+                                          fate-acodec-flac-blocksize-65535
 fate-acodec-flac: FMT = flac
 fate-acodec-flac: CODEC = flac -compression_level 2
 
 fate-acodec-flac-exact-rice: FMT = flac
 fate-acodec-flac-exact-rice: CODEC = flac -compression_level 2 -exact_rice_parameters 1
+
+# Nearly verbatim frames far larger than the parser used to assume: ~64 KiB
+# with 16384-sample blocks, ~250 KiB with 65535-sample blocks. The 16384
+# stream has enough frames for the parser to reach its steady state, the
+# 65535 stream so few that every seek probe reaches the end of input first.
+fate-acodec-flac-blocksize-16384: FMT = flac
+fate-acodec-flac-blocksize-16384: CODEC = flac -compression_level 0 -lpc_type none -ch_mode indep -frame_size 16384
+
+fate-acodec-flac-blocksize-65535: FMT = flac
+fate-acodec-flac-blocksize-65535: CODEC = flac -compression_level 0 -lpc_type none -ch_mode indep -frame_size 65535
 
 FATE_ACODEC-$(call ENCDEC, G723_1, G723_1, ARESAMPLE_FILTER) += fate-acodec-g723_1
 fate-acodec-g723_1: tests/data/asynth-8000-1.wav

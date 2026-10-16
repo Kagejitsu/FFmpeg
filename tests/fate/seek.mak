@@ -5,7 +5,8 @@ FATE_SEEK_ACODEC += adpcm-ima_qt  adpcm-ima_qt-trellis  \
                     adpcm-ms      adpcm-ms-trellis      \
                     adpcm-swf     adpcm-swf-trellis     \
                     adpcm-yamaha  adpcm-yamaha-trellis  \
-                    alac flac mp2                       \
+                    alac flac flac-blocksize-16384      \
+                    flac-blocksize-65535 mp2            \
                     pcm-alaw  pcm-mulaw pcm-s8 pcm-u8   \
                     pcm-s16be pcm-s16le pcm-s24be       \
                     pcm-s24le pcm-s32be pcm-s32le       \
@@ -24,6 +25,8 @@ fate-seek-acodec-adpcm-swf-trellis:     SRC = fate/acodec-adpcm-swf-trellis.flv
 fate-seek-acodec-adpcm-yamaha-trellis:  SRC = fate/acodec-adpcm-yamaha-trellis.wav
 fate-seek-acodec-alac:          SRC = fate/acodec-alac.mov
 fate-seek-acodec-flac:          SRC = fate/acodec-flac.flac
+fate-seek-acodec-flac-blocksize-16384: SRC = fate/acodec-flac-blocksize-16384.flac
+fate-seek-acodec-flac-blocksize-65535: SRC = fate/acodec-flac-blocksize-65535.flac
 fate-seek-acodec-mp2:           SRC = fate/acodec-mp2.mp2
 fate-seek-acodec-pcm-alaw:      SRC = fate/acodec-pcm-alaw.wav
 fate-seek-acodec-pcm-f32be:     SRC = fate/acodec-pcm-f32be.au
